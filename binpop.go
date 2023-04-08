@@ -37,8 +37,6 @@ var (
 	walkDLL     = flag.String("dll", "", "dll to look in")
 )
 
-type symbols []string
-
 func exportSymbols(cmd *cobra.Command, args []string) error {
 	path, err := cmd.Flags().GetString("path")
 	if err != nil {
@@ -50,8 +48,9 @@ func exportSymbols(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("path is invalid: %v", err)
 	}
 
-	filepath.WalkDir(path, func(path string, entry fs.DirEntry, err error) error {
+	err = filepath.WalkDir(path, func(path string, entry fs.DirEntry, err error) error {
 		if !entry.IsDir() {
+			fmt.Println(path)
 			if filepath.Ext(entry.Name()) == ".dll" {
 				fmt.Println(entry.Name())
 			}
@@ -59,12 +58,19 @@ func exportSymbols(cmd *cobra.Command, args []string) error {
 		return nil
 	})
 
-	_, err = cmd.Flags().GetString("search")
 	if err != nil {
-		return fmt.Errorf("search flag: %v", err)
+		return fmt.Errorf("walking path: %v", err)
 	}
 
-	sharedlib.Dummy()
+	// _, err = cmd.Flags().GetString("search")
+	// if err != nil {
+	// 	return fmt.Errorf("search flag: %v", err)
+	// }
+
+	_, err = sharedlib.ListExportedFunctions("kernel32.dll")
+	if err != nil {
+		return fmt.Errorf("ListExportedFunctions: %v", err)
+	}
 
 	return nil
 }
