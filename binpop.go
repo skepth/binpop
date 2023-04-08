@@ -18,6 +18,9 @@ var (
 	rootCmd = &cobra.Command{
 		Use:   "binpop",
 		Short: "binpop is a binary exploration tool",
+		CompletionOptions: cobra.CompletionOptions{
+			HiddenDefaultCmd: true,
+		},
 	}
 
 	exportSymCmd = &cobra.Command{
