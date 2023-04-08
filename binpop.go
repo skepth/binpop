@@ -10,7 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/skepth/binpop/lib/sharedlib"
+	"github.com/skepth/binpop/sharedlib"
 	"github.com/spf13/cobra"
 )
 
