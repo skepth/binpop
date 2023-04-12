@@ -9,7 +9,6 @@ Usage:
   binpop [command]
 
 Available Commands:
-  completion     Generate the autocompletion script for the specified shell
   export-symbols export symbols from shared library
   help           Help about any command
 

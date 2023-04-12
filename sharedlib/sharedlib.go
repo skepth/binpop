@@ -3,19 +3,25 @@ package sharedlib
 
 import (
 	"fmt"
+	"io/ioutil"
 	"syscall"
-	"unsafe"
 
 	"github.com/0xrawsec/golang-win32/win32"
+	"github.com/soyum2222/editPE"
+)
+
+const (
+	IMAGE_DIRECTORY_ENTRY_EXPORT = 0
 )
 
 var (
 	// Importing imagehlp.h & dbghelp.h functions though imagehlp.dll.
 	imgHelperDLL                  = syscall.NewLazyDLL("imagehlp.dll")
+	dbghelpDLL                    = syscall.NewLazyDLL("dbghelp.dll")
 	procMapAndLoad                = imgHelperDLL.NewProc("MapAndLoad")
 	procUnMapAndLoad              = imgHelperDLL.NewProc("UnMapAndLoad")
-	procImageDirectoryEntryToData = imgHelperDLL.NewProc("ImageDirectoryEntryToData")
-	procImageRvaToVa              = imgHelperDLL.NewProc("ImageRvaToVa")
+	procImageDirectoryEntryToData = dbghelpDLL.NewProc("ImageDirectoryEntryToData") // imgHelperDLL.NewProc("ImageDirectoryEntryToData")
+	procImageRvaToVa              = dbghelpDLL.NewProc("ImageRvaToVa")
 )
 
 type Symbols []string
@@ -37,7 +43,7 @@ type IMAGE_EXPORT_DIRECTORY struct {
 
 // ref: https://microsoft.github.io/windows-docs-rs/doc/windows/Win32/System/Diagnostics/Debug/struct.LOADED_IMAGE.html
 type LOADED_IMAGE struct {
-	// ModuleName    win32.PWSTR //pstr?
+	ModuleName    *uint8
 	hFile         win32.HANDLE
 	MappedAddress *uint8
 	FileHeader    *IMAGE_NT_HEADERS64
@@ -54,9 +60,9 @@ type LOADED_IMAGE struct {
 }
 
 type IMAGE_NT_HEADERS64 struct {
-	Signature  uint32
-	FileHeader IMAGE_FILE_HEADER
-	// OptionalHeader IMAGE_OPTIONAL_HEADER64
+	Signature      uint32
+	FileHeader     IMAGE_FILE_HEADER
+	OptionalHeader IMAGE_OPTIONAL_HEADER64
 }
 
 type IMAGE_FILE_HEADER struct {
@@ -69,6 +75,44 @@ type IMAGE_FILE_HEADER struct {
 	Characteristics      uint16
 }
 
+type IMAGE_OPTIONAL_HEADER64 struct {
+	Magic                       uint16
+	MajorLinkerVersion          uint8
+	MinorLinkerVersion          uint8
+	SizeOfCode                  uint32
+	SizeOfInitializedData       uint32
+	SizeOfUninitializedData     uint32
+	AddressOfEntryPoint         uint32
+	BaseOfCode                  uint32
+	ImageBase                   uint64
+	SectionAlignment            uint32
+	FileAlignment               uint32
+	MajorOperatingSystemVersion uint16
+	MinorOperatingSystemVersion uint16
+	MajorImageVersion           uint16
+	MinorImageVersion           uint16
+	MajorSubsystemVersion       uint16
+	MinorSubsystemVersion       uint16
+	Win32VersionValue           uint32
+	SizeOfImage                 uint32
+	SizeOfHeaders               uint32
+	CheckSum                    uint32
+	Subsystem                   uint16
+	DllCharacteristics          uint16
+	SizeOfStackReserve          uint64
+	SizeOfStackCommit           uint64
+	SizeOfHeapReserve           uint64
+	SizeOfHeapCommit            uint64
+	LoaderFlags                 uint32
+	NumberOfRvaAndSizes         uint32
+	DataDirectory               []IMAGE_DATA_DIRECTORY
+}
+
+type IMAGE_DATA_DIRECTORY struct {
+	VirtualAddress uint32
+	Size           uint32
+}
+
 //
 func stringToCharPtr(str string) *uint8 {
 	chars := append([]byte(str), 0) // null terminated
@@ -76,51 +120,36 @@ func stringToCharPtr(str string) *uint8 {
 }
 
 func ListExportedFunctions(dllName string) (Symbols, error) {
-
-	// var dNameRVAs *win32.DWORD
-	// imgExpDir := new(IMAGE_EXPORT_DIRECTORY)
-	// var cDirSize uint64 // unsigned long?
-	loadedImg := new(LOADED_IMAGE)
-	// var sName string
-	// sListOfFunctions := new(Symbols)
-
-	// MapAndLoad the DLL in Question
-	// ref: https://learn.microsoft.com/en-us/windows/win32/api/imagehlp/nf-imagehlp-mapandload
-	result, _, _ := procMapAndLoad.Call(
-		uintptr(unsafe.Pointer(stringToCharPtr(dllName))),
-		win32.NULL,
-		uintptr(unsafe.Pointer(loadedImg)),
-		uintptr(win32.TRUE),
-		uintptr(win32.TRUE),
-	)
-
-	if int(result) == int(win32.TRUE) {
-		fmt.Println("Success")
+	peFile := editPE.PE{}
+	funcNames := Symbols{}
+	f, err := ioutil.ReadFile(dllName)
+	if err != nil {
+		return nil, fmt.Errorf("opening file: %v", err)
 	}
 
-	// fmt.Printf("Call returned: %v\n", (win32.BOOL)(success))
-	fmt.Printf("Loaded Image: %v\n", loadedImg)
+	peFile.Parse(f)
 
-	// if err != nil {
-	// 	return nil, fmt.Errorf("procMapAndLoad call failed: %v", err)
-	// }
+	for _, element := range peFile.GetExportFunc().FuncName {
+		funcNames = append(funcNames, string(element.Name))
+	}
 
-	fmt.Println("In Load")
-
-	// fmt.Printf("Call returned: %v\n", success)
-	// fmt.Printf("Loaded Image: %v\n", loadedImg)
-
-	// Call ImageDirectoryEntryToData to get pointer to AddressOfNames & NumberOfNames
-
-	// Call ImageRvaToVa over AddressOfNames
-
-	// Iterate over NumberOfNames
-
-	// |_> Call ImageRvaToVa to get the func names from RVA
-
-	return nil, nil
+	return funcNames, nil
 }
 
-func Dummy() {
-	fmt.Println("Shared Lib")
+func SearchExportedFunctions(dllName string, funcName string) (bool, error) {
+	peFile := editPE.PE{}
+	f, err := ioutil.ReadFile(dllName)
+	if err != nil {
+		return false, fmt.Errorf("opening file: %v", err)
+	}
+
+	peFile.Parse(f)
+
+	for _, element := range peFile.GetExportFunc().FuncName {
+		if string(element.Name) == funcName {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
